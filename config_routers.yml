@@ -1,0 +1,114 @@
+---
+- name: Configure Routers
+  hosts: all
+  gather_facts: no
+  
+  vars_files:
+    - variables.yml
+    
+  tasks:
+    - name: Enter enable mode
+      ios_config:
+        lines:
+          - enable
+          - terminal length 0
+          - terminal width 0
+      register: enable_mode
+
+    - name: Enter enable mode
+      ios_config:
+        lines:
+          - conf t
+      register: conf_mode
+      when: enable_mode is success
+      
+      
+    - name: Configure console line settings
+      ios_config:
+        lines:
+          - logging sync
+          - exec-timeout 0 0
+        parents:
+          - line con 0
+      when: conf_mode is success
+
+    - name: Configure hostname
+      ios_config:
+        lines:
+          - hostname "{{ inventory_hostname }}"
+
+    - name: Enable IPv6 unicast routing
+      ios_config:
+        lines:
+          - ipv6 unicast-routing
+
+    - name: Disable IP domain lookup
+      ios_config:
+        lines:
+          - no ip domain-lookup
+
+    - name: Set clock timezone to UTC
+      ios_config:
+        lines:
+          - clock timezone UTC +0
+
+    - name: Configure interfaces for router1
+      when: inventory_hostname == "R1"
+      ios_config:
+        timeout: 180
+        lines:
+          - ip address {{ item.ip }} {{ item.mask }}
+          - ipv6 address {{ item.ipv6 }}
+          - ipv6 address {{ item.ipv6_link_local }} link-local
+          - no shutdown
+          - ipv6 enable
+        parents:
+          - interface {{ item.name }}
+      loop: "{{ r1_interfaces }}"
+
+    - name: Configure interfaces for router2
+      when: inventory_hostname == "R2"
+      ios_config:
+        timeout: 180
+        lines:
+          - ip address {{ item.ip }} {{ item.mask }}
+          - ipv6 address {{ item.ipv6 }}
+          - ipv6 address {{ item.ipv6_link_local }} link-local
+          - no shutdown
+          - ipv6 enable
+        parents:
+          - interface {{ item.name }}
+      loop: "{{ r2_interfaces }}"
+
+    - name: Configure interfaces for router3
+      when: inventory_hostname == "R3"
+      ios_config:
+        timeout: 180
+        lines:
+          - ip address {{ item.ip }} {{ item.mask }}
+          - ipv6 address {{ item.ipv6 }}
+          - ipv6 address {{ item.ipv6_link_local }} link-local
+          - no shutdown
+          - ipv6 enable
+        parents:
+          - interface {{ item.name }}
+      loop: "{{ r3_interfaces }}"
+
+    - name: Save running configuration to startup configuration
+      ios_command:
+        commands:
+          - copy running-config startup-config
+      register: save_config_output
+
+    - name: Retrieve the startup configuration from router
+      ios_command:
+        commands:
+          - show startup-config
+      register: startup_config
+
+    - name: Save startup configuration to a file
+      local_action:
+        module: copy
+        content: "{{ startup_config.stdout }}"
+        dest: "./configurations/{{ inventory_hostname }}-startup-config"
+      delegate_to: localhost
